@@ -1,24 +1,24 @@
 /**
  * abrp telemetry injector for smart #1
  *   please note comments identified by: abrp/smart/#1
- * 
+ *
  * fetching live data from iobroker smart-eq adapter
  *   https://github.com/TA2k/ioBroker.smart-eq
- * 
+ *
  * then using either the iobroker rest-api adapter
  *   https://github.com/ioBroker/ioBroker.rest-api
- * 
+ *
  * or the iobroker simple-api
  *   https://github.com/ioBroker/ioBroker.simple-api
- * 
+ *
  * to provide data to this script/daemon, which is using boilerplate code from abrp.js
  *   version as of 02.01.2023
  *   https://github.com/iternio/ovms-link/tree/dev
  *   https://github.com/iternio/ovms-link/blob/dev/lib/abrp.js
- * 
+ *
  * the abrp telemetry data is defined here
  *   https://documenter.getpostman.com/view/7396339/SWTK5a8w
- * 
+ *
  * and since this script is using the openvehicles metrics naming convention you can find it here
  *   https://docs.openvehicles.com/en/latest/userguide/metrics.html
  */
@@ -43,7 +43,7 @@ const PREFIX_IOBROKER_URL = process.env.PREFIX_IOBROKER_URL
 // to make it run outside of Ovms
 //
 
-// these are tickers for high and low frequency. 
+// these are tickers for high and low frequency.
 // in our case we will later disable high frequency subscription, since our indirections induce way too much latency anyway
 // for calling the ioBroker rest api, which will get data fetched asynchronously by smart-eq rest api adapter once a minute
 const TICKER_HIGH_FREQUENCY = 'ticker.1'
@@ -55,7 +55,7 @@ const MAX_ELAPSED_DURATION = 24 * 3600 // 24 hours
 
 // this initializes a fake user config from default
 const DEFAULT_CFG = {
-  "user_token": ABRP_TOKEN,      
+  "user_token": ABRP_TOKEN,
 }
 var usr_cfg = JSON.parse(JSON.stringify(DEFAULT_CFG))
 
@@ -106,10 +106,10 @@ const allLocalIobrokerMetricNames = [
   'status.additionalVehicleStatus.climateStatus.exteriorTemp', // corresponding for 'v.e.temp'
   'undefined', // for now no corresponding for 'v.p.altitude' since it would be too old anyway
   'undefined', // no corresponding for 'v.p.direction'
-  'undefined', // for now no corresponding for 'v.p.latitude' since it would be too old anyway
-  'undefined', // for now no corresponding for 'v.p.longitude' since it would be too old anyway
+  'status.basicVehicleStatus.position.latitudeConv', // for now no corresponding for 'v.p.latitude' since it would be too old anyway
+  'status.basicVehicleStatus.position.longitudeConv', // for now no corresponding for 'v.p.longitude' since it would be too old anyway
   'undefined', // for now no corresponding for 'v.p.odometer' since it would be too old anyway
-  'undefined', // for now no corresponding for 'v.p.speed' since it would be too old anyway
+  'status.basicVehicleStatus.speed', // for now no corresponding for 'v.p.speed' since it would be too old anyway
   'undefined', // for now no corresponding for 'xnl.v.b.range.instrument'
   'undefined', // for now no corresponding for 'xnl.v.b.soc.instrument'
   'undefined', // for now no corresponding for 'xnl.v.b.soh.instrument'
@@ -124,11 +124,14 @@ const localOvmsMetricNames = [
   'v.c.state',
   'v.e.parktime',
   'v.e.temp',
+  'v.p.latitude',
+  'v.p.longitude',
+  'v.p.speed',
   'hx11.v.p.enginestatus'
 ]
 
 // these are the high frequency metric names, they are completely ignored for now since we do not have a mapping for them
-// and since we are not doing high frequency anyway 
+// and since we are not doing high frequency anyway
 const allLocalHighFrequencyMetricNames = [
   'v.b.power', 'v.p.speed'
 ]
@@ -144,6 +147,9 @@ const localOvmsMetricMap = {
   'v.c.state': PREFIX_IOBROKER_STATE+'status.additionalVehicleStatus.electricVehicleStatus.chargerState',
   'v.e.parktime': PREFIX_IOBROKER_STATE+'status.parkTime.status',
   'v.e.temp': PREFIX_IOBROKER_STATE+'status.additionalVehicleStatus.climateStatus.exteriorTemp',
+  'v.p.latitude': PREFIX_IOBROKER_STATE+'status.basicVehicleStatus.position.latitudeConv',
+  'v.p.longitude': PREFIX_IOBROKER_STATE+'status.basicVehicleStatus.position.longitudeConv',
+  'v.p.speed': PREFIX_IOBROKER_STATE+'status.basicVehicleStatus.speed',
   'hx11.v.p.enginestatus': PREFIX_IOBROKER_STATE+'status.basicVehicleStatus.engineStatus',
 };
 
@@ -176,37 +182,37 @@ function localConfigSetValues(param, prefix, object) {
 // replacement for https://docs.openvehicles.com/en/latest/userguide/scripting.html#ovmsmetrics
 function localMetricsGetValues(metricNames) {
   var collectedMetrics = []
-  
+
   // loop over all metricNames to setup our rest url
   var aRestUrl = PREFIX_IOBROKER_URL
   metricNames.forEach((metricName) => {
     if(aRestUrl.slice(-1) != '/')
       aRestUrl = aRestUrl + ','
-    aRestUrl = aRestUrl + localOvmsMetricMap[metricName] 
+    aRestUrl = aRestUrl + localOvmsMetricMap[metricName]
   });
 
   // synchronous fetch and read/mapping of incoming data
   const json = fetch(aRestUrl).json()
   Object.entries(json).forEach(([key, value]) => {
-    
-    var aKey = metricNames[key] 
+
+    var aKey = metricNames[key]
     switch(aKey) {
       case 'v.c.state':
-        collectedMetrics[aKey] = (value.val == '2' ? 'charging' : 'stopped') 
+        collectedMetrics[aKey] = (value.val == '2' ? 'charging' : 'stopped')
         break
       case 'v.c.current':
-        collectedMetrics[aKey] = Number(value.val) * -1 
+        collectedMetrics[aKey] = Number(value.val) * -1
         break
       case 'v.e.parktime':
         collectedMetrics[aKey] = round( (Date.now() - Number(value.val)) / 1000)
         break
       case 'hx11.v.p.enginestatus':
-        collectedMetrics[aKey] = value.val 
+        collectedMetrics[aKey] = value.val
         break
       default:
         collectedMetrics[aKey] = Number(value.val)
     }
-    
+
   });
 
   return collectedMetrics
@@ -224,7 +230,7 @@ function localUnsubscribeHighFrequency() {
 //
 // basic boilerplate code from https://github.com/iternio/ovms-link/blob/dev/lib/abrp.js
 // with adaptions to run outside of Ovms
-// 
+//
 
 function clone(obj) {
   return Object.assign({}, obj)
@@ -340,7 +346,7 @@ function collectHighFrequencyMetrics() {
 function getOvmsMetrics() {
   // https://docs.openvehicles.com/en/latest/userguide/metrics.html
   const metricNames = localOvmsMetricNames
-  
+
   // abrp/smart/#1 use localMetricsGetValues
   const aResult = localMetricsGetValues(metricNames)
   return aResult
@@ -384,32 +390,32 @@ function mapMetricsToTelemetry(metrics) {
   // Array.prototype.includes() not supported in duktape
   // TODO: confirm if is_charging is supposed to be true if regenerative braking is
   // charging the battery.
-  
+
   // abrp/smart/#1
   const is_charging = chargingStates.indexOf(metrics['v.c.state']) > -1
-  
+
   // abrp/smart/#1
   const engine_status = metrics['hx11.v.p.enginestatus'] // engine_off
   const is_parked = metrics['v.e.parktime'] > 60 && engine_status == 'engine_off'
-  
+
   // abrp/smart/#1
   //const kwh_charged = is_charging ? round(metrics['v.c.kwh'], 1) : 0
   const kwh_charged = undefined
-  
+
   // abrp/smart/#1
   //const is_dcfc = is_charging && dcfcMode === metrics['v.c.mode']
   const is_dcfd = undefined
-  
+
   // The instrument range reported by the Nissan Leaf OVMS metrics doesn't
   // appear to update when the car is parked and then charged. So, use the
   // generic vehicle ideal range when it's more than 10% of the reported
   // instrument range.
   const instrumentRange = round(metrics['xnl.v.b.range.instrument']) || 0
   const idealRange = round(metrics['v.b.range.ideal'])
-  
+
   // abrp/smart/#1
   const current = (is_charging ? round(metrics['v.c.current'], 1) : undefined)
-  
+
   // https://documenter.getpostman.com/view/7396339/SWTK5a8w
   const telemetry = {
     utc: round(Date.now() / 1000),
@@ -453,7 +459,7 @@ function sendTelemetry(telemetry) {
     encodeURIComponent(token) +
     '&tlm=' +
     encodeURIComponent(JSON.stringify(telemetry))
-    
+
   // abrp/smart/#1
   /*
   HTTP.Request({
@@ -474,15 +480,15 @@ function sendTelemetry(telemetry) {
     .then(response => {
       if (response.status !== 200) {
         console.warn('Non 200 response from ABRP', response.data);
-      }      
+      }
     })
     .catch(error => {
       localConsole.error('ABRP error', error)
-    });  
+    });
 }
 
 function sendTelemetryIfNecessary() {
-  
+
   const maxCalibrationTimeout = 5 // seconds
   const maxChargingTimeout = 30 * 60 // 30 minutes
   const staleConnectionTimeout = 3 * 60 // 3 minutes for OVMS API Key
@@ -508,10 +514,10 @@ function sendTelemetryIfNecessary() {
 
   const elapsed = currentTelemetry.utc - lastSentTelemetry.utc
   var maxElapsedDuration
-  
+
   // abrp/smart/#1 if we do not have status parked or dcfc, skip a conditional branch below
   const isStatusUndefined = (currentTelemetry.is_parked === undefined && currentTelemetry.is_dcfc === undefined )
-  
+
   if (isSignificantTelemetryChange(currentTelemetry, lastSentTelemetry)) {
     localConsole.info('Significant telemetry change')
     maxElapsedDuration = 0 // always send
@@ -676,8 +682,8 @@ module.exports = {
   send,
   resetConfig,
   round, // jest
-} 
+}
 */
 
-export {info, onetime, send}
+export {info, onetime, send, sendTelemetryIfNecessary,validateUsrAbrpConfig}
 

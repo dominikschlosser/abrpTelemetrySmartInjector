@@ -4,14 +4,26 @@
 //
 
 import PubSub from 'pubsub-js'
-import {info, onetime, send} from './abrp.js'
+import {info, onetime, send,sendTelemetryIfNecessary,validateUsrAbrpConfig} from './abrp.js'
 
-// activate sending
-send(1)
-
-// main loop
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-while(true){
-    PubSub.publish('ticker.10')
-    await sleep(10000)
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
+
+console.log('starting...');
+if (validateUsrAbrpConfig()) {
+ while(true){
+   try {
+     sendTelemetryIfNecessary();
+   } catch (err) {
+     console.err(err);
+   }
+   await sleep(1000)
+ }
+} else {
+  console.log('config invalid. aborting...');
+}
+
+console.log('finished');
